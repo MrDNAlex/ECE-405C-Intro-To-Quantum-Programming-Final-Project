@@ -284,6 +284,52 @@ class QJPEG:
         
         return HUFFMAN_TABLE_AC + HuffmanTableACLength + HuffmanTableID + bytes(self.STD_AC_COUNTS) + bytes(self.STD_AC_SYMS)
     
+    def getJPEGStartOfScan(self) -> bytes:
+        """Gets the JPEG Start of Scan Header. This tells the JPEG what Huffman Tables and Quantization Matrix each Color Channel will use
+        
+        # Start of Scan (SOS)
+        SOS (\xff\xda) (2 Bytes) \n
+        SOS_COMPONENTS (\x03) (1 Byte) \n
+        
+        ## Luminance Huffman Table (Y_HUFFMAN_TABLE_INDEX)
+        Luminance Color Channel ID (\x01 = 1) (1 Byte) \n
+        Huffman Table ID (\x00 = 0) (1 Byte) \n
+        
+        ## Chroma Blue Huffman Table (CB_HUFFMAN_TABLE_INDEX)
+        Luminance Color Channel ID (\x02 = 2) (1 Byte) \n
+        Huffman Table ID (\x00 = 0) (1 Byte) \n
+        
+        ## Chroma Red Huffman Table (CR_HUFFMAN_TABLE_INDEX)
+        Luminance Color Channel ID (\x03 = 3) (1 Byte) \n
+        Huffman Table ID (\x00 = 0) (1 Byte) \n
+        
+        ## Spectral Selection (SOS_SPECTRAL_SELECTION)
+        Start of Selection (\x00) (1 Byte) (DC Coefficient) \n
+        End of Selection (\x3f = 63) (1 Byte) (63rd AC Coefficient) \n
+        
+        ## Successive Approximation (SOS_SUCCESSIVE_APPROXIMATION)
+        Used for more advanced JPEGs that start blurry, and get more refined \n
+        Set to (\x00 = 0) (1 Byte) \n
+        """
+        
+        SOS = b'\xff\xda'
+        SOS_COMPONENTS = b'\x03'
+        
+        Y_HUFFMAN_TABLE_INDEX = b'\x01\x00'
+        CB_HUFFMAN_TABLE_INDEX = b'\x02\x00' 
+        CR_HUFFMAN_TABLE_INDEX = b'\x03\x00'
+        
+        SOS_SPECTRAL_SELECTION = b'\x00\x3f'
+        SOS_SUCCESSIVE_APPROXIMATION = b'\x00'
+        
+        SOSTableIndices = Y_HUFFMAN_TABLE_INDEX + CB_HUFFMAN_TABLE_INDEX + CR_HUFFMAN_TABLE_INDEX
+        
+        SOSPayload = SOS_COMPONENTS + SOSTableIndices + SOS_SPECTRAL_SELECTION + SOS_SUCCESSIVE_APPROXIMATION
+        
+        SOSPayloadLength = struct.pack('>H', len(SOSPayload) + 2)
+        
+        return SOS + SOSPayloadLength + SOSPayload
+    
     def saveJPEG(self, fileName: str, quality:int = 90):
         
         # Check if Image has been loaded?
@@ -299,7 +345,7 @@ class QJPEG:
             f.write(self.getJPEGColorFormatSpecification())                     # SOF0 (Color Format Specification)
             f.write(self.getJPEGHuffmanTableDC())                               # DHTDC (DC Huffman Table Encoding)
             f.write(self.getJPEGHuffmanTableAC())                               # DHTAC (AC Huffman Table Encoding)
-            # SOS (Start of Scan of Image Compression)
+            f.write(self.getJPEGStartOfScan())                                  # SOS (Start of Scan of Image Compression)
             # Raw Compressed Bits of Image
             # EOI (End of Image (Footer))
         
