@@ -206,6 +206,48 @@ class QJPEG:
         
         return DQT + sectionLength + quantizationMatrixID + zigZaggedQuantizationMatrix.tobytes()
     
+    def getJPEGColorFormatSpecification(self) -> bytes:
+        """Gets the JPEG Standardized Color Format Specification. Encodes the info based off the image properties
+        
+        # SOF0 - Image Dimensions
+        Section Header (\xff\xc0) (2 Bytes) \n
+        Color Precision (Unsigned Char) (1 Byte) (must be added) \n
+        Image Height (Unsigned Short) (2 Bytes) (must be added) \n
+        Image Width (Unsigned Short) (2 Bytes) (must be added) \n 
+        Color Channels (Unsigned Char) (1 Byte) (must be added) \n
+        
+        ## Luminance Subsampling (Y_QUANTIZATION_SUBSAMPLING)
+        Color Channel ID (\x01 = 1) (1 Byte) \n
+        Sampling Type (\x11 = 1x1) \n
+        Quantization Table ID (\x00 = 0) \n
+        
+        ## Chroma Blue Subsampling (CB_QUANTIZATION_SUBSAMPLING)
+        Color Channel ID (\x02 = 2) (1 Byte) \n
+        Sampling Type (\x11 = 1x1) \n
+        Quantization Table ID (\x00 = 0) \n
+        
+        ## Chroma Red Subsampling (CR_LUMINANCE_QUANTIZATION)
+        Color Channel ID (\x03 = 3) (1 Byte) \n
+        Sampling Type (\x11 = 1x1) \n
+        Quantization Table ID (\x00 = 0) \n
+        """
+        
+        SOF0 = b'\xff\xc0'
+        
+        Y_QUANTIZATION_SUBSAMPLING = b'\x01\x11\x00'
+        CB_QUANTIZATION_SUBSAMPLING = b'\x02\x11\x00'
+        CR_LUMINANCE_QUANTIZATION = b'\x03\x11\x00'
+        
+        colorAccuracy = 8
+        colorChannels = 3
+        
+        SOFDimensionPayload = struct.pack('>BHHB', colorAccuracy, self.imageHeight, self.imageWidth, colorChannels)
+        
+        SOFPayload = SOFDimensionPayload + Y_QUANTIZATION_SUBSAMPLING + CB_QUANTIZATION_SUBSAMPLING + CR_LUMINANCE_QUANTIZATION
+
+        SOFPayloadLength = struct.pack('>H', len(SOFPayload) + 2)
+        
+        return SOF0 + SOFPayloadLength + SOFPayload
     
     def saveJPEG(self, fileName: str, quality:int = 90):
         
@@ -219,7 +261,7 @@ class QJPEG:
             f.write(self.getJPEGSignature())                                    # SOI (Start of Image (Header))
             f.write(self.getJPEGVersionInfo())                                  # APP0 (JPEG Version Info)
             f.write(self.getJPEGQuantizationMatrix(scaledQuantizationMatrix))   # DQT (Quantization Matrix Encoding)
-            # SOF0 (Color Format Specification)
+            f.write(self.getJPEGColorFormatSpecification())                     # SOF0 (Color Format Specification)
             # DHTDC (DC Huffman Table Encoding)
             # DHTAC (AC Huffman Table Encoding)
             # SOS (Start of Scan of Image Compression)
