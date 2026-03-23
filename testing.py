@@ -195,8 +195,6 @@ scatter = plt.scatter(cols, rows, c=indices, cmap='magma', s=100, edgecolors='bl
 cbar = plt.colorbar(scatter)
 cbar.set_label('Step Index in Zig-Zag', rotation=270, labelpad=15)
 
-#plt.show()
-
 # Display an image in the Graph
 DNAImage = cv2.imread("DNA.jpg")
 DNAImageGray = cv2.imread("DNA.jpg", cv2.IMREAD_GRAYSCALE)
@@ -218,8 +216,6 @@ scatter = plt.scatter(cols, rows, c=indices, cmap='magma', s=10, edgecolors='bla
 cbar = plt.colorbar(scatter)
 cbar.set_label('Step Index in Zig-Zag', rotation=270, labelpad=15)
 
-#plt.show()
-
 print(getPixelValues(imgRGB, 0, 0))
 print(getPixelValues(DNAImageGray, 0, 0))
 
@@ -231,7 +227,7 @@ print(isColoured(DNAImageGray))
 
 qdct_2d = create2DQCDTCircuit()
 qdct_2d.draw("mpl") # Visual check
-#plt.show()
+plt.show()
 
 def getPaddedDimensions(imageGray: np.ndarray):
     h, w = imageGray.shape[:2]
