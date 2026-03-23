@@ -249,6 +249,41 @@ class QJPEG:
         
         return SOF0 + SOFPayloadLength + SOFPayload
     
+    def getJPEGHuffmanTableDC(self) -> bytes:
+        """Gets the JPEG DC Huffman Table and encodes it
+        
+        # DC Huffman Table
+        Header (\xff\xc4) (2 Bytes) \n
+        Table Length (1 Byte) \n
+        Table ID (\x00) (1 Byte) \n
+        DC Counts (len(Counts) Bytes)) \n
+        DC Symbols (len(Symbols) Bytes)
+        """
+        
+        HUFFMAN_TABLE_DC = b'\xff\xc4'
+        
+        HuffmanTableDCLength = struct.pack('>H', 2 + 1 + len(self.STD_DC_COUNTS) + len(self.STD_DC_SYMS))
+        HuffmanTableID = b'\x00'
+        
+        return HUFFMAN_TABLE_DC + HuffmanTableDCLength + HuffmanTableID + bytes(self.STD_DC_COUNTS) + bytes(self.STD_DC_SYMS)
+    
+    def getJPEGHuffmanTableAC(self):
+        """Gets the JPEG AC Huffman Table and encodes it
+        
+        # AC Huffman Table
+        Header (\xff\xc4) (2 Bytes) \n
+        Table Length (1 Byte) \n
+        Table ID (\x10) (1 Byte) \n
+        AC Counts (len(Counts) Bytes)) \n
+        AC Symbols (len(Symbols) Bytes)
+        """
+        HUFFMAN_TABLE_AC = b'\xff\xc4'
+        
+        HuffmanTableACLength = struct.pack('>H', 2 + 1 + len(self.STD_AC_COUNTS) + len(self.STD_AC_SYMS))
+        HuffmanTableID = b'\x10'
+        
+        return HUFFMAN_TABLE_AC + HuffmanTableACLength + HuffmanTableID + bytes(self.STD_AC_COUNTS) + bytes(self.STD_AC_SYMS)
+    
     def saveJPEG(self, fileName: str, quality:int = 90):
         
         # Check if Image has been loaded?
@@ -262,8 +297,8 @@ class QJPEG:
             f.write(self.getJPEGVersionInfo())                                  # APP0 (JPEG Version Info)
             f.write(self.getJPEGQuantizationMatrix(scaledQuantizationMatrix))   # DQT (Quantization Matrix Encoding)
             f.write(self.getJPEGColorFormatSpecification())                     # SOF0 (Color Format Specification)
-            # DHTDC (DC Huffman Table Encoding)
-            # DHTAC (AC Huffman Table Encoding)
+            f.write(self.getJPEGHuffmanTableDC())                               # DHTDC (DC Huffman Table Encoding)
+            f.write(self.getJPEGHuffmanTableAC())                               # DHTAC (AC Huffman Table Encoding)
             # SOS (Start of Scan of Image Compression)
             # Raw Compressed Bits of Image
             # EOI (End of Image (Footer))
