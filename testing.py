@@ -429,32 +429,6 @@ def bitstring_to_bytes_jfif(bit_string):
     stuffed_bytes = byte_array.replace(b'\xff', b'\xff\x00')
     return bytes(stuffed_bytes)
 
-def encodeQuantizedBlocks(allQuantizedBlocks: np.ndarray):
-    """
-    Orchestrates: Categories -> Huffman Map -> Bitstream (Code + Extra Bits)
-    """
-    # 1. Generate Entry Pairs (Symbol, ExtraBits)
-    if len(allQuantizedBlocks.shape) == 3:
-        entries = encodeRunLength(allQuantizedBlocks)
-    else:
-        entries = []
-        for i in range(allQuantizedBlocks.shape[0]):
-            entries.extend(encodeRunLength(allQuantizedBlocks[i]))
-    
-    # 2. Build Tree on the symbols (not the extra bits)
-    huffman_symbols = [e[0] for e in entries]
-    huffmanRoot = build_huffman_tree(huffman_symbols)
-    huffmanMap = {}
-    generate_codes(huffmanRoot, "", huffmanMap)
-    
-    # 3. Create Bitstring: Huffman Code + Raw Extra Bits
-    bitString = "".join([huffmanMap[e[0]] + e[1] for e in entries])
-    
-    # 4. Final Packing with Byte Stuffing
-    compressedBytes = bitstring_to_bytes_jfif(bitString)
-    
-    return compressedBytes, huffmanMap
-
 customResult = DCTImage(DNAImageGray)
 
 quantizedResults = quantizeImage(customResult, Q_LUMINANCE)
@@ -490,11 +464,6 @@ for i in range(10):
 print(quantizedResults[2][0])
 print(zigZagTravel(quantizedResults[2][0]))
 
-#compBytes, huffmanMap = encodeQuantizedBlocks(quantizedResults[0])
-
-#print(compBytes)
-#print(huffmanMap)
-
-image = QJPEG("teams.png")
+image = QJPEG("DNA.jpg")
 
 image.saveJPEG("teams-quantum.jpg", 95)
