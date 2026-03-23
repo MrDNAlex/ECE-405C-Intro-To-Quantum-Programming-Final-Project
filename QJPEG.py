@@ -50,6 +50,81 @@ class QJPEG:
         self.imageWidth = self.rawImage.shape[1]
     
     # ==========================================
+    # UTILITY FUNCTIONS
+    # ==========================================
+    
+    def scaleQuantizationMatrix(self, qMatrix: np.ndarray, quality: int = 50):
+        """Scales the Quantization Matrix so that it appropriately encodes data depending on specified quality
+        
+        Args :
+            qMatrix (numpy.ndarray) - Quantization Matrix being used
+            quality (float) - The JPEG Compression Quality (1 - 100)
+            
+        Returns :
+            (numpy.ndarray) - The scaled Quantization Matrix accounting for Quality level
+        """
+        quality = max(min(quality, 100), 1)
+        
+        scale = 0
+        if quality < 50:
+            scale = 5000 / quality
+        else:
+            scale = 200 - 2 * quality
+        
+        scaled = np.floor((qMatrix * scale + 50)/100)
+        
+        # Clamp values to standard 8-bit JPEG limits
+        scaled[scaled < 1] = 1
+        scaled[scaled > 255] = 255
+        
+        return scaled.astype(np.float32)
+    
+    
+    def zigZagEncoding(self, matrix: np.ndarray):
+        """The ZigZag Encoder, for lack of a better term, it returns the inputted Matrix as an array of it's values following the Zig Zag pattern starting from the Top Left Corner
+        
+        Args :
+            matrix (numpy.ndarray) - The Matrix being encoded in a Zig Zag Pattern
+            
+        Returns :
+            (numpy.ndarray) - Array of Values from the Matrix ordered in the Zig Zag Pattern
+        """
+        result = []
+        r, c = 0, 0
+        
+        h, w = np.shape(matrix)
+        rows, cols = h, w
+        
+        for _ in range(rows * cols):
+            result.append(matrix[r, c])
+            
+            if (r + c) % 2 == 0:
+                # Move Diagonal Upright
+                if c == cols - 1:
+                    # Hit Right Wall, Move Down
+                    r += 1
+                elif r == 0:
+                    # Hit Top Wall, Move Right
+                    c += 1
+                else:
+                    r -= 1
+                    c += 1
+                    
+            else:
+                # Move Diagonal Downleft
+                if r == rows - 1:
+                    # Hit Bottom Wall, Move Right
+                    c += 1
+                elif c ==0 :
+                    # Hit Left Wall, Move Down
+                    r += 1
+                else:
+                    r += 1
+                    c -= 1 
+        
+        return np.array(result)
+    
+    # ==========================================
     # STANDARD JPEG ENCODER (ISO COMPLIANT)
     # ==========================================
     
@@ -112,16 +187,38 @@ class QJPEG:
         
         return sectionHeader + sectionLength + identifier + version + densityOfUnits + xDensity + yDensity + thumbnailHeight + thumbnailWidth
     
+    def getJPEGQuantizationMatrix(self, quantizationMatrix: np.ndarray) -> bytes:
+        """Gets the Quantization Matrix to store in the JPEG encoded in a ZigZag Pattern
+        
+        Args :
+            quantizationMatrix (numpy.ndarray) - The Quantization Matrix to encode into the Image
+    
+        # Quantization Matrix Storage 
+        Section Header (\xff\xdb) \n
+        Length of Section (67) stored as Big-Endian Unsigned Short (2 Bytes) \n
+        Quantization Table ID (\x00 = 0) (1 Byte) \n
+        Quantization Matrix Values (64 Bytes) (Must be Added) \n
+        """
+        DQT = b'\xff\xdb'
+        sectionLength = struct.pack('>H', 67)
+        quantizationMatrixID = b'\x00'
+        zigZaggedQuantizationMatrix = self.zigZagEncoding(quantizationMatrix).astype(np.uint8)
+        
+        return DQT + sectionLength + quantizationMatrixID + zigZaggedQuantizationMatrix.tobytes()
+    
+    
     def saveJPEG(self, fileName: str, quality:int = 90):
         
         # Check if Image has been loaded?
+        
+        scaledQuantizationMatrix = self.scaleQuantizationMatrix(self.QLUMINANCE, quality)
         
         print("Saving Image as JPEG...")
         
         with open(fileName, 'wb') as f:
             f.write(self.getJPEGSignature())                                    # SOI (Start of Image (Header))
             f.write(self.getJPEGVersionInfo())                                  # APP0 (JPEG Version Info)
-            # DQT (Quantization Matrix Encoding)
+            f.write(self.getJPEGQuantizationMatrix(scaledQuantizationMatrix))   # DQT (Quantization Matrix Encoding)
             # SOF0 (Color Format Specification)
             # DHTDC (DC Huffman Table Encoding)
             # DHTAC (AC Huffman Table Encoding)
