@@ -124,6 +124,145 @@ class QJPEG:
         
         return np.array(result)
     
+    def getPaddedDimensions(self, imageGray: np.ndarray):
+        """Calculates the padded dimensions of the image to a Multiple of 8
+        
+        Args :
+            imageGray (numpy.ndarray) - A Gray Scale or Single Color Channel Matrix representing an Image
+            
+        Returns :
+            (int, int) - The padded dimensions the image should be so that the dimensions are multiples of 8
+        """
+        h, w = imageGray.shape[:2]
+        return int(np.ceil(h / 8) * 8), int(np.ceil(w / 8) * 8)
+    
+    # ==========================================
+    # QUANTUM DCT (QDCT) LOGIC
+    # ==========================================
+    
+    def apply1DQCT(self, qc: QuantumCircuit, dataQubitsIndex: list[int], ancillaQubitIndex: int):
+        """Applies the Discrete Cosine Transform in a Single Dimension. This is achieved by Mirroring the Data into 2 Basis using a Hadamard Gate, then Symmetrizing the order of the data in the |1> ket. Finally a Phase Shift is applied at the end to bring the Magnitudes to the Positive Cosine Values
+        
+        Args :
+            qc (QuantumCircuit) - Quiskit Quantum Circuit to add the Quantum Discrete Cosine Transform to
+            dataQubitsIndex (list[int]) - List of Indices that represent he Data Qubits and will have the DCT Applied to
+            ancillaQubitIndex (int) - Index of the Ancilla Qubit to apply the Hadamard and Symmetrize Data
+        """
+        
+        N = 2**len(dataQubitsIndex)
+        
+        # Symmetrize Data by entangling states with Hadamard, then inverting the second half of states with CX
+        qc.h(ancillaQubitIndex)
+        for q in dataQubitsIndex:
+            qc.cx(ancillaQubitIndex, q)
+            
+        qftRange = list(dataQubitsIndex) + [ancillaQubitIndex]
+        qc.append(QFT(len(qftRange)), qftRange)
+        
+        # Phase Shift so that we get the appropriately calculated Positive Magnitudes from Cosine Transform
+        for j, q in enumerate(qftRange):
+            qc.p((np.pi * (2**j))/(2*N), q)
+        
+    def prepareDCTBlocks(self, imageGray: np.ndarray):
+        """Prepares the Image by splicing it into 8x8 Blocks and Padding it to 16x16 for the Ancilla Qubit Doubling. This formats data so it can be encoded and processed in a Parallelized way using the Quantum Discrete Cosine Transform
+        
+        Args :
+            imageGray (numpy.ndarray) - A Gray Scale or Single Color Channel Matrix representing an Image
+            
+        Returns :
+            (numpy.ndarray) - Array of the Flattened 16x16 Image Blocks to Parallelize
+            (int) - The True Number of Blocks the Image is comprised of before Padding to Nearest Power of 2
+        """
+        
+        h, w = imageGray.shape[:2]
+        newH, newW = self.getPaddedDimensions(imageGray)
+        paddedImage = np.pad(imageGray, ((0, newH - h), (0, newW - w)), mode='constant')
+        
+        # Reshape into 8x8 Blocks
+        blocks8x8 = paddedImage.reshape(newH // 8, 8, newW // 8, 8).transpose(0, 2, 1, 3).reshape(-1, 8, 8)
+        numBlocks = blocks8x8.shape[0]
+        
+        # Create Padded blocks so that Ancilla Qubit Data is populated
+        blocks16x16 = np.zeros((numBlocks, 16, 16), dtype=np.float32)
+        blocks16x16[:, :8, :8] = blocks8x8
+    
+        # Make sure number of blocks is a power of 2
+        nextPow2 = 2**int(np.ceil(np.log2(numBlocks)))
+        if nextPow2 > numBlocks:
+            extra = np.zeros((nextPow2 - numBlocks, 16, 16), dtype=np.float32)
+            blocks16x16 = np.vstack([blocks16x16, extra])
+        
+        return blocks16x16.flatten(), numBlocks
+        
+    def processParallelQDCT(self, imageGray: np.ndarray):
+        """Processes the 8x8 Blocks from the Image using a Parallelized Quantum Discrete Cosine Transform
+
+        Args :
+            imageGray (numpy.ndarray) - A Gray Scale or Single Color Channel Matrix representing an Image
+
+        Returns:
+            (numpy.ndarray) - Array of 8x8 Frequency Blocks from the Discrete Cosine Transform
+        """
+        
+        flattenedBlocks, blocks = self.prepareDCTBlocks(imageGray)
+        numQubits = int(np.log2(len(flattenedBlocks)))
+        
+        norm = np.linalg.norm(flattenedBlocks)
+        normalizedData = flattenedBlocks / norm if norm != 0 else flattenedBlocks
+        
+        # Initialize State and Circuit
+        state = Statevector(normalizedData)
+        qc = QuantumCircuit(numQubits)
+        
+        # Add the Discrete Quantum Cosine Transforms to the Circuit
+        self.apply1DQCT(qc, [0, 1, 2], 3)
+        self.apply1DQCT(qc, [4, 5, 6], 7)
+        
+        # Compute the QDCT Result in parallel
+        finalState = state.evolve(qc)
+            
+        # Decode data and reshape it to 8x8 blocks
+        reshaped = (np.real(finalState.data) * norm).reshape(-1, 16, 16)
+            
+        scaleMatrix = np.ones((8, 8), dtype=np.float32)
+        
+        inverseSqrt2 = 1 / np.sqrt(2)
+        
+        scaleMatrix[0, :] *= inverseSqrt2
+        scaleMatrix[:, 0] *= inverseSqrt2
+        
+        # Extract TopLeft 8x8 and return it
+        return reshaped[:blocks, :8, :8] * (2.0 * scaleMatrix)
+        
+    def DCTImage(self, image:np.ndarray):
+        """Applies the Quantum Discrete Cosine Transform to the Image and Handles cases where it is coloured or not
+        
+        Args :
+            image (numpy.ndarray) - Numpy Matrix Representing individual Image Pixels
+        
+        Returns :
+            (numpy.ndarray) - Array of 8x8 Frequency Blocks from the Discrete Cosine Transform
+        """
+        
+        if len(image.shape) == 2: 
+            return self.processParallelQDCT(image)
+        
+        return np.stack([self.processParallelQDCT(image[:, :, i]) for i in range(3)], axis=0)
+        
+    def quantizeImage(self, allBlocksChannels:np.ndarray, quantizationMatrix:np.ndarray):
+        """Quantizes the Frequency Blocks by Dividing each by the Quantization Matrix and Rounding their Values
+        
+        Args :
+            allBlocksChannel (numpy.ndarray) - Array of 8x8 Frequency Blocks from the Discrete Cosine Transform
+            quantizationMatrix (numpy.ndarray) - Quantization Matrix to use
+        
+        Returns :
+            (numpy.ndarray) - Array of Quantized 8x8 Frequency Blocks
+        """
+        
+        quantized = np.round(allBlocksChannels / quantizationMatrix)
+        return quantized.astype(np.int32)
+    
     # ==========================================
     # STANDARD JPEG ENCODER (ISO COMPLIANT)
     # ==========================================
@@ -149,6 +288,102 @@ class QJPEG:
             code <<= 1 
         
         return huffmanMap
+    
+    def getCategoricalBits(self, value:float, isDC:bool=False):
+        """Encodes a Value into it's nearest Power of 2 and it's remaining Qubits
+        
+        Args :
+            value (float) - Value to Encode
+            isDC (bool) - Toggle to change the Encoding Limit
+        
+        Returns :
+            (int) - Nearest Power of 2
+            (int) - Extra bits needed to represent the number
+        """
+        
+        # Define the Bit Quality (2^10, or 2^11 depending on if DC or not)
+        limit = 2047 if isDC else 1023
+        
+        value = max(min(int(value), limit), -limit)
+        
+        if value == 0:
+            return 0, ""
+        
+        absVal = abs(value)
+        category = int(np.floor(np.log2(absVal))) + 1
+        
+        if value > 0:
+            # Return Binary Outright
+            bits = bin(absVal)[2:]
+        else:
+            # Shift the number to be in positive range, then convert to binary
+            shiftedValue = (2**category - 1) + value
+            bits = bin(shiftedValue)[2:].zfill(category) 
+            
+        return category, bits
+    
+    def encodeACRunLength(self, zigZag: np.ndarray, allEntries: list[(str, bin, bin)], lastNonZeroIndex: int):
+        """Encodes the AC Values of the Quantized Frequency Block using Run Length Encoding
+        
+        Args :
+            zigZag (numpy.ndarray) - Array of Values of the Quantized Frequency Block in ZigZag Pattern order
+            allEntries (list[(str, bin, bin)]) - List of Tupples storing the Run Length Encoding ("DC/AC", Binary of nearest Power Of 2, Binary of extra bits) 
+        """
+        
+        run = 0
+        for i in range(1, lastNonZeroIndex + 1):
+            value = int(zigZag[i])
+            if value == 0:
+                run += 1
+            else:
+                while run > 15:
+                    allEntries.append(("AC", 0xF0, ""))
+                    run -= 16
+                category, extra = self.getCategoricalBits(value)
+                
+                # Use 1 Byte to Encode the Number of occurrences + lowest power of 2
+                # 0010 (Occurences = 2) 0100 (Power of 2 = 2^4 = 16) 00000000... (Remaining bits needed for extra)) 
+                # Use the OR (|) operator to combines the Occurences and Power of 2
+                allEntries.append(("AC", (run << 4) | category, extra))
+                run = 0
+    
+    def encodeImageToSymbols(self, allQuantizedChannels:np.ndarray):
+        """Encodes the Color Channels and Quantized Frequency Blocks into a Run Length Encoding Formatted List
+        
+        Args :
+            allQuantizedChannels (numpy.ndarray) - Array of the Color Channels and Quantized Frequency Blocks
+            
+        Returns :
+            (list[(str, bin, bin)]) - List of Values Encoded using Run Length Encoding ("DC/AC", Binary of nearest Power Of 2, Binary of extra bits) 
+        """
+        
+        allEntries = []
+        numBlocks = allQuantizedChannels.shape[1]
+        previousDC = [0, 0, 0]
+
+        for b in range(numBlocks):
+            for c in range(3):
+                block = allQuantizedChannels[c, b]
+                zigZag = self.zigZagEncoding(block)
+                
+                # Perform DC Encoding
+                difference = int(zigZag[0] - previousDC[c])
+                category, extra = self.getCategoricalBits(difference, isDC=True)
+                allEntries.append(("DC", category, extra))
+                previousDC[c] = zigZag[0]
+        
+                # Find Last Data Index 
+                lastNonZeroIndex = 63
+                while lastNonZeroIndex > 0 and zigZag[lastNonZeroIndex] == 0:
+                    lastNonZeroIndex -= 1   
+                    
+                # AC Encoding (Run length encoding on zeros until last non-zero)
+                self.encodeACRunLength(zigZag, allEntries, lastNonZeroIndex)
+                
+                if lastNonZeroIndex < 63:
+                    allEntries.append(("AC", 0x00, ""))
+                    
+        return allEntries
     
     def getJPEGSignature(self) -> bytes:
         """Gets the Standardized JPEG File Header Bytes
@@ -330,6 +565,40 @@ class QJPEG:
         
         return SOS + SOSPayloadLength + SOSPayload
     
+    def getJPEGByteScan(self, scaledQuantizationMatrix: np.ndarray) -> bytes:
+        """Gets the JPEG Byte Scan of the Image. Achieves this by Applying the following steps :
+        
+        1. Apply Quantum Discrete Cosine Transform to Image
+        2. Quantizing the Frequency Blocks
+        3. Encoding the Frequency Blocks using Run Length Encoding
+        4. Applying Huffman Encoding to the Run Length Encoding
+        5. Converting everything to a Byte String and returning it
+        
+        Args : 
+            scaledQuantizationMatrix (numpy.ndarray) - The Scaled Quantization Matrix used to Quantize Frequency Blocks
+        
+        Returns :
+            (bytes) - String of Encoded Bytes representing the JPEG Image
+        """
+        
+        # Perform DCT and Quantization
+        imageDCT = self.DCTImage(self.rawImage)
+        quantizedImage = self.quantizeImage(imageDCT, scaledQuantizationMatrix)
+        
+        # Runlength Encoding
+        entries = self.encodeImageToSymbols(quantizedImage)
+        
+        # Huffman Encoding Using Precomputed Tables
+        byteString = "".join([(self.DC_MAP[e[1]] if e[0] == 'DC' else self.AC_MAP[e[1]]) + e[2] for e in entries])
+        
+        # Stuff the Bytes
+        padding = (8 - len(byteString) % 8) % 8
+        byteString += "1" * padding
+        byteStringArray = bytearray(int(byteString[i:i+8], 2) for i in range(0, len(byteString), 8))
+        stuffedBytes = bytes(byteStringArray).replace(b'\xff', b'\xff\x00')
+        
+        return stuffedBytes
+    
     def getJPEGFooter(self) -> bytes:
         """Gets the JPEG Standardized Footer Bytes
         
@@ -355,7 +624,7 @@ class QJPEG:
             f.write(self.getJPEGHuffmanTableDC())                               # DHTDC (DC Huffman Table Encoding)
             f.write(self.getJPEGHuffmanTableAC())                               # DHTAC (AC Huffman Table Encoding)
             f.write(self.getJPEGStartOfScan())                                  # SOS (Start of Scan of Image Compression)
-            # Raw Compressed Bits of Image
+            f.write(self.getJPEGByteScan(scaledQuantizationMatrix))             # Raw Compressed Bits of Image
             f.write(self.getJPEGFooter())                                       # EOI (End of Image (Footer))
         
         print("Image Saved!")
