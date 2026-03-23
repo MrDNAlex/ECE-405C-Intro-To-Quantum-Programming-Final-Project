@@ -330,6 +330,15 @@ class QJPEG:
         
         return SOS + SOSPayloadLength + SOSPayload
     
+    def getJPEGFooter(self) -> bytes:
+        """Gets the JPEG Standardized Footer Bytes
+        
+        JPEG Footer (\xff\xd9) (2 Bytes)
+        """
+        SOE = b'\xff\xd9'
+        
+        return SOE
+    
     def saveJPEG(self, fileName: str, quality:int = 90):
         
         # Check if Image has been loaded?
@@ -347,6 +356,6 @@ class QJPEG:
             f.write(self.getJPEGHuffmanTableAC())                               # DHTAC (AC Huffman Table Encoding)
             f.write(self.getJPEGStartOfScan())                                  # SOS (Start of Scan of Image Compression)
             # Raw Compressed Bits of Image
-            # EOI (End of Image (Footer))
+            f.write(self.getJPEGFooter())                                       # EOI (End of Image (Footer))
         
         print("Image Saved!")
