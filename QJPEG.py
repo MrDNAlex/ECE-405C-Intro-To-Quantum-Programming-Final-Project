@@ -268,7 +268,15 @@ class QJPEG:
     # ==========================================
     
     def buildJPEGStandardHuffmanMap(self, counts: list[int], symbols: list[int]):
-        """Builds the Standardized Huffman Table upon starting"""
+        """Builds the Standardized Huffman Table upon starting
+        
+        Args :
+            counts (list[int]) - Indexes of the Huffman Table Counts
+            symbols (list[int]) - Symbols each count will be represented as when encoded
+            
+        Returns :
+            (dict) - Disctionary Huffman Table Map used to convert values to their encoded Huffman Table Counterpart
+        """
         
         huffmanMap = {}
         code, symbolID = 0, 0
@@ -580,12 +588,17 @@ class QJPEG:
         Returns :
             (bytes) - String of Encoded Bytes representing the JPEG Image
         """
+        print("Applying Quantum Discrete Cosine Transform...")
         
         # Perform DCT and Quantization
         imageDCT = self.DCTImage(self.rawImage)
-        quantizedImage = self.quantizeImage(imageDCT, scaledQuantizationMatrix)
         
-        # Runlength Encoding
+        print("Completed QDCT!")
+        
+        print("Quantizing image and Encoding...")
+        
+        # Perform Image Quantization and Runlength Encoding
+        quantizedImage = self.quantizeImage(imageDCT, scaledQuantizationMatrix)
         entries = self.encodeImageToSymbols(quantizedImage)
         
         # Huffman Encoding Using Precomputed Tables
@@ -596,6 +609,8 @@ class QJPEG:
         byteString += "1" * padding
         byteStringArray = bytearray(int(byteString[i:i+8], 2) for i in range(0, len(byteString), 8))
         stuffedBytes = bytes(byteStringArray).replace(b'\xff', b'\xff\x00')
+        
+        print("Finished Quantizing and Encoding!")
         
         return stuffedBytes
     
@@ -609,6 +624,12 @@ class QJPEG:
         return SOE
     
     def saveJPEG(self, fileName: str, quality:int = 90):
+        """Saves the Loaded Image as a JPEG File with a defined Quality level between 1 - 100
+        
+        Args :
+            fileName (str) - Name of the Saved JPEG File
+            quality (int) - Quality Level to Save the JPEG as (1 - 100) (Higher Quality = Larger JPEG File Size = Higher Fidelity)
+        """
         
         # Check if Image has been loaded?
         
