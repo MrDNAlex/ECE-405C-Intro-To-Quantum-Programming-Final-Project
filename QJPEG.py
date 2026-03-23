@@ -31,13 +31,16 @@ class QJPEG:
     # PROPERTIES
     # ==========================================
     
-    
-    imageHeight = 0
-    imageWidth = 0
+    imageHeight: int = 0
+    imageWidth: int = 0
     
     rawImage : np.ndarray
 
     def __init__(self, imagePath: str):
+        
+        self.DC_MAP : dict = self.buildJPEGStandardHuffmanMap(self.STD_DC_COUNTS, self.STD_DC_SYMS)
+        self.AC_MAP : dict = self.buildJPEGStandardHuffmanMap(self.STD_AC_COUNTS, self.STD_AC_SYMS)
+        
         # Load Image From Path
         img = cv2.imread(imagePath)
         imgYCbCr = cv2.cvtColor(img, cv2.COLOR_BGR2YCrCb)[:, :, [0, 2, 1]]
@@ -45,7 +48,33 @@ class QJPEG:
         
         self.imageHeight = self.rawImage.shape[0]
         self.imageWidth = self.rawImage.shape[1]
+    
+    # ==========================================
+    # STANDARD JPEG ENCODER (ISO COMPLIANT)
+    # ==========================================
+    
+    def buildJPEGStandardHuffmanMap(self, counts: list[int], symbols: list[int]):
+        """Builds the Standardized Huffman Table upon starting"""
         
+        huffmanMap = {}
+        code, symbolID = 0, 0
+        
+        for i, count in enumerate(counts):
+            bitLength = i + 1
+            for _ in range(count):
+                # Convert the Integer to Binary, pad it, then     
+                binaryWithoutHex = bin(code)[2:]
+                zeroPaddedBinary = binaryWithoutHex.zfill(bitLength)
+                huffmanMap[symbols[symbolID]] = zeroPaddedBinary
+                
+                code += 1
+                symbolID += 1
+            
+            # Bitwise Left Shift
+            code <<= 1 
+        
+        return huffmanMap
+    
     def saveJPEG(self, fileName: str, quality:int = 90):
         
         # Check if Image has been loaded?
