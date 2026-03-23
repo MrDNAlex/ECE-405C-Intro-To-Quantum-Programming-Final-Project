@@ -75,6 +75,43 @@ class QJPEG:
         
         return huffmanMap
     
+    def getJPEGSignature(self) -> bytes:
+        """Gets the Standardized JPEG File Header Bytes
+        
+        # Start of Image (SOI)
+        JPEG Signature Bytes : FFD8
+        """
+        SOI = b'\xff\xd8'
+        
+        return SOI
+    
+    def getJPEGVersionInfo(self) -> bytes:
+        """Gets the Standardized JPEG Version Info Section
+        
+        # APP0
+        Section Header (\xff\xe0) (2 Bytes) \n
+        Length of the Section (16) stored as Big-Endian Unsigned Short (2 Bytes) \n
+        Identifier (JFIF\x00) (5 Bytes) \n
+        Version (\x01\x01) (2 Bytes) \n
+        Density of Units (\x00) (1 Byte) \n
+        X Density (\x00\x01) (2 Bytes) \n
+        Y Density (\x00\x01) (2 Bytes) \n
+        Thumbnail Width (\x00) (1 Byte) \n
+        Thumbnail Height (\x00) (1 Byte) \n
+        """
+        
+        sectionHeader = b'\xff\xe0'
+        sectionLength = struct.pack('>H', 16)
+        identifier = b'JFIF\x00'
+        version = b'\x01\x01'
+        densityOfUnits = b'\x00'
+        xDensity = b'\x00\x01'
+        yDensity = b'\x00\x01'
+        thumbnailHeight = b'\x00'
+        thumbnailWidth = b'\x00'
+        
+        return sectionHeader + sectionLength + identifier + version + densityOfUnits + xDensity + yDensity + thumbnailHeight + thumbnailWidth
+    
     def saveJPEG(self, fileName: str, quality:int = 90):
         
         # Check if Image has been loaded?
@@ -82,9 +119,8 @@ class QJPEG:
         print("Saving Image as JPEG...")
         
         with open(fileName, 'wb') as f:
-            f.write("JPEG File")
-            # SOI (Start of Image (Header))
-            # APP0 (JPEG Version Info)
+            f.write(self.getJPEGSignature())                                    # SOI (Start of Image (Header))
+            f.write(self.getJPEGVersionInfo())                                  # APP0 (JPEG Version Info)
             # DQT (Quantization Matrix Encoding)
             # SOF0 (Color Format Specification)
             # DHTDC (DC Huffman Table Encoding)
