@@ -1,5 +1,14 @@
 from QJPEG import QJPEG
+import time
 
-image = QJPEG("DNA.jpg")
+image = "Compression/DNA.jpg"
 
-image.saveJPEG("teams-quantum.jpg", 95)
+for q in range(0, 100, 5):
+        
+    start = time.time()
+    image = QJPEG(image)
+
+    image.saveJPEG(f"CompressionResults/Image 1-{q}.png", q)
+    
+    elapsed = time.time() - start
+        
