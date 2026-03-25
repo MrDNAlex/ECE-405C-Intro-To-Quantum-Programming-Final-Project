@@ -79,7 +79,6 @@ class QJPEG:
         
         return scaled.astype(np.float32)
     
-    
     def zigZagEncoding(self, matrix: np.ndarray):
         """The ZigZag Encoder, for lack of a better term, it returns the inputted Matrix as an array of it's values following the Zig Zag pattern starting from the Top Left Corner
         
@@ -162,49 +161,60 @@ class QJPEG:
         # Phase Shift so that we get the appropriately calculated Positive Magnitudes from Cosine Transform
         for j, q in enumerate(qftRange):
             qc.p((np.pi * (2**j))/(2*N), q)
-        
-    def prepareDCTBlocks(self, imageGray: np.ndarray):
+    
+    def prepareDCTBlocks(self, image: np.ndarray):
         """Prepares the Image by splicing it into 8x8 Blocks and Padding it to 16x16 for the Ancilla Qubit Doubling. This formats data so it can be encoded and processed in a Parallelized way using the Quantum Discrete Cosine Transform
         
         Args :
-            imageGray (numpy.ndarray) - A Gray Scale or Single Color Channel Matrix representing an Image
+            image (numpy.ndarray) - Matrix Representing an Image (Grayscale or 3-Channel Color)
             
         Returns :
             (numpy.ndarray) - Array of the Flattened 16x16 Image Blocks to Parallelize
             (int) - The True Number of Blocks the Image is comprised of before Padding to Nearest Power of 2
         """
         
-        h, w = imageGray.shape[:2]
-        newH, newW = self.getPaddedDimensions(imageGray)
-        paddedImage = np.pad(imageGray, ((0, newH - h), (0, newW - w)), mode='constant')
+        h, w = image.shape[:2]
+        newH, newW = self.getPaddedDimensions(image)
         
-        # Reshape into 8x8 Blocks
-        blocks8x8 = paddedImage.reshape(newH // 8, 8, newW // 8, 8).transpose(0, 2, 1, 3).reshape(-1, 8, 8)
+        # Handle Color vs Grayscale Padding and Block Extraction
+        if len(image.shape) == 2:
+            paddedImage = np.pad(image, ((0, newH - h), (0, newW - w)), mode='constant')
+            blocks8x8 = paddedImage.reshape(newH // 8, 8, newW // 8, 8).transpose(0, 2, 1, 3).reshape(-1, 8, 8)
+        else:
+            # Pad the height and width, but do not pad the color channels
+            paddedImage = np.pad(image, ((0, newH - h), (0, newW - w), (0, 0)), mode='constant')
+            
+            # Extract 8x8 blocks for each channel and stack them sequentially
+            blocks8x8 = np.vstack([
+                paddedImage[:, :, i].reshape(newH // 8, 8, newW // 8, 8).transpose(0, 2, 1, 3).reshape(-1, 8, 8)
+                for i in range(3)
+            ])
+            
         numBlocks = blocks8x8.shape[0]
         
         # Create Padded blocks so that Ancilla Qubit Data is populated
         blocks16x16 = np.zeros((numBlocks, 16, 16), dtype=np.float32)
         blocks16x16[:, :8, :8] = blocks8x8
     
-        # Make sure number of blocks is a power of 2
-        nextPow2 = 2**int(np.ceil(np.log2(numBlocks)))
+        # Make sure total number of blocks is a power of 2
+        nextPow2 = 2**int(np.ceil(np.log2(numBlocks))) if numBlocks > 0 else 1
         if nextPow2 > numBlocks:
             extra = np.zeros((nextPow2 - numBlocks, 16, 16), dtype=np.float32)
             blocks16x16 = np.vstack([blocks16x16, extra])
         
         return blocks16x16.flatten(), numBlocks
-        
-    def processParallelQDCT(self, imageGray: np.ndarray):
+    
+    def processParallelQDCT(self, image: np.ndarray):
         """Processes the 8x8 Blocks from the Image using a Parallelized Quantum Discrete Cosine Transform
 
         Args :
-            imageGray (numpy.ndarray) - A Gray Scale or Single Color Channel Matrix representing an Image
+            image (numpy.ndarray) - Matrix Representing an Image (Grayscale or 3-Channel Color)
 
         Returns:
             (numpy.ndarray) - Array of 8x8 Frequency Blocks from the Discrete Cosine Transform
         """
         
-        flattenedBlocks, blocks = self.prepareDCTBlocks(imageGray)
+        flattenedBlocks, blocks = self.prepareDCTBlocks(image)
         numQubits = int(np.log2(len(flattenedBlocks)))
         
         norm = np.linalg.norm(flattenedBlocks)
@@ -218,7 +228,7 @@ class QJPEG:
         self.apply1DQCT(qc, [0, 1, 2], 3)
         self.apply1DQCT(qc, [4, 5, 6], 7)
         
-        # Compute the QDCT Result in parallel
+        # Compute the QDCT Result in parallel across all channels
         finalState = state.evolve(qc)
             
         # Decode data and reshape it to 8x8 blocks
@@ -233,7 +243,7 @@ class QJPEG:
         
         # Extract TopLeft 8x8 and return it
         return reshaped[:blocks, :8, :8] * (2.0 * scaleMatrix)
-        
+    
     def DCTImage(self, image:np.ndarray):
         """Applies the Quantum Discrete Cosine Transform to the Image and Handles cases where it is coloured or not
         
@@ -247,7 +257,12 @@ class QJPEG:
         if len(image.shape) == 2: 
             return self.processParallelQDCT(image)
         
-        return np.stack([self.processParallelQDCT(image[:, :, i]) for i in range(3)], axis=0)
+        # Process all channels simultaneously in the quantum simulator
+        allBlocks = self.processParallelQDCT(image)
+        
+        # Split the flattened output blocks back into the 3 original color channels
+        numBlocksPerChannel = allBlocks.shape[0] // 3
+        return allBlocks.reshape(3, numBlocksPerChannel, 8, 8)
         
     def quantizeImage(self, allBlocksChannels:np.ndarray, quantizationMatrix:np.ndarray):
         """Quantizes the Frequency Blocks by Dividing each by the Quantization Matrix and Rounding their Values
