@@ -196,8 +196,8 @@ cbar = plt.colorbar(scatter)
 cbar.set_label('Step Index in Zig-Zag', rotation=270, labelpad=15)
 
 # Display an image in the Graph
-DNAImage = cv2.imread("DNA.jpg")
-DNAImageGray = cv2.imread("DNA.jpg", cv2.IMREAD_GRAYSCALE)
+DNAImage = cv2.imread("TestImages/DNA.jpg")
+DNAImageGray = cv2.imread("TestImages/DNA.jpg", cv2.IMREAD_GRAYSCALE)
 
 imgRGB = cv2.cvtColor(DNAImage, cv2.COLOR_BGR2RGB)
 
