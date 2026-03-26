@@ -244,25 +244,29 @@ class QJPEG:
         # Extract TopLeft 8x8 and return it
         return reshaped[:blocks, :8, :8] * (2.0 * scaleMatrix)
     
-    def DCTImage(self, image:np.ndarray):
+    def DCTImage(self, image: np.ndarray, memoryEfficient: bool = False):
         """Applies the Quantum Discrete Cosine Transform to the Image and Handles cases where it is coloured or not
         
         Args :
             image (numpy.ndarray) - Numpy Matrix Representing individual Image Pixels
+            memoryEfficient (bool) - Toggle to process channels sequentially (True) or simultaneously (False)
         
         Returns :
             (numpy.ndarray) - Array of 8x8 Frequency Blocks from the Discrete Cosine Transform
         """
         
+        # Grayscale images are always processed as a single channel
         if len(image.shape) == 2: 
             return self.processParallelQDCT(image)
         
-        # Process all channels simultaneously in the quantum simulator
-        allBlocks = self.processParallelQDCT(image)
-        
-        # Split the flattened output blocks back into the 3 original color channels
-        numBlocksPerChannel = allBlocks.shape[0] // 3
-        return allBlocks.reshape(3, numBlocksPerChannel, 8, 8)
+        if memoryEfficient:
+            return np.stack([self.processParallelQDCT(image[:, :, i]) for i in range(3)], axis=0)
+        else:
+            allBlocks = self.processParallelQDCT(image)
+            
+            # Split the flattened output blocks back into the 3 original color channels
+            numBlocksPerChannel = allBlocks.shape[0] // 3
+            return allBlocks.reshape(3, numBlocksPerChannel, 8, 8)
         
     def quantizeImage(self, allBlocksChannels:np.ndarray, quantizationMatrix:np.ndarray):
         """Quantizes the Frequency Blocks by Dividing each by the Quantization Matrix and Rounding their Values
@@ -588,7 +592,7 @@ class QJPEG:
         
         return SOS + SOSPayloadLength + SOSPayload
     
-    def getJPEGByteScan(self, scaledQuantizationMatrix: np.ndarray) -> bytes:
+    def getJPEGByteScan(self, scaledQuantizationMatrix: np.ndarray, memoryEfficient: bool = False) -> bytes:
         """Gets the JPEG Byte Scan of the Image. Achieves this by Applying the following steps :
         
         1. Apply Quantum Discrete Cosine Transform to Image
@@ -599,6 +603,7 @@ class QJPEG:
         
         Args : 
             scaledQuantizationMatrix (numpy.ndarray) - The Scaled Quantization Matrix used to Quantize Frequency Blocks
+            memoryEfficient (bool) - Toggle to process channels sequentially (True) or simultaneously (False)
         
         Returns :
             (bytes) - String of Encoded Bytes representing the JPEG Image
@@ -606,7 +611,7 @@ class QJPEG:
         print("Applying Quantum Discrete Cosine Transform...")
         
         # Perform DCT and Quantization
-        imageDCT = self.DCTImage(self.rawImage)
+        imageDCT = self.DCTImage(self.rawImage, memoryEfficient)
         
         print("Completed QDCT!")
         
@@ -638,12 +643,13 @@ class QJPEG:
         
         return SOE
     
-    def saveJPEG(self, fileName: str, quality:int = 90):
+    def saveJPEG(self, fileName: str, quality:int = 90, memoryEfficient: bool = False):
         """Saves the Loaded Image as a JPEG File with a defined Quality level between 1 - 100
         
         Args :
             fileName (str) - Name of the Saved JPEG File
             quality (int) - Quality Level to Save the JPEG as (1 - 100) (Higher Quality = Larger JPEG File Size = Higher Fidelity)
+            memoryEfficient (bool) - Toggle to process channels sequentially (True) or simultaneously (False)
         """
         
         # Check if Image has been loaded?
@@ -660,7 +666,7 @@ class QJPEG:
             f.write(self.getJPEGHuffmanTableDC())                               # DHTDC (DC Huffman Table Encoding)
             f.write(self.getJPEGHuffmanTableAC())                               # DHTAC (AC Huffman Table Encoding)
             f.write(self.getJPEGStartOfScan())                                  # SOS (Start of Scan of Image Compression)
-            f.write(self.getJPEGByteScan(scaledQuantizationMatrix))             # Raw Compressed Bits of Image
+            f.write(self.getJPEGByteScan(scaledQuantizationMatrix, memoryEfficient))             # Raw Compressed Bits of Image
             f.write(self.getJPEGFooter())                                       # EOI (End of Image (Footer))
         
         print("Image Saved!")
