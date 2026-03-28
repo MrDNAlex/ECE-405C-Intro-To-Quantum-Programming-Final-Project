@@ -19,7 +19,7 @@ images = [
     "Test-Images/JOJO.PNG",
     "Test-Images/JOJOW3.PNG",
     "Test-Images/Onion.PNG",
-    "Test-Images/Starwars.jpg"
+    "Test-Images/Starwars.jpg",
     "Test-Images/starwarsoriginal.PNG",
     "Test-Images/StarwarsRise.JPG",
     "Test-Images/Tanks.png",
@@ -65,7 +65,7 @@ with open(csv_filename, mode="w", newline="") as file:
             qjpeg_path = f"CompressionResults/{base_name}_q{q}_QJPEG.jpg"
 
             start_q = time.time()
-            image_q.saveJPEG(qjpeg_path, q)
+            image_q.saveJPEG(qjpeg_path, q, "Blue Marble" in base_name)
             time_qft = time.time() - start_q
 
             # Get QJPEG compressed size
