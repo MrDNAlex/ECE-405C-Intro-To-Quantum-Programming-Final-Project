@@ -135,7 +135,6 @@ def RunQuantum(fileName):
     print("-" * 30)
     
     del state
-    del newState
     del qc
     gc.collect()
 
@@ -179,7 +178,8 @@ if __name__ == "__main__":
         "Test-Images/JOJO.PNG",
         "Test-Images/JOJOW3.PNG",
         "Test-Images/Onion.PNG",
-        "Test-Images/Starwars.jpg" "Test-Images/starwarsoriginal.PNG",
+        "Test-Images/Starwars.jpg",
+        "Test-Images/starwarsoriginal.PNG",
         "Test-Images/StarwarsRise.JPG",
         "Test-Images/Tanks.png",
         "Test-Images/WildFriday.PNG",
