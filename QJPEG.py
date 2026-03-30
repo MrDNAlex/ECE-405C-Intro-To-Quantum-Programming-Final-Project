@@ -1,9 +1,18 @@
 import numpy as np
 import struct
 import cv2
+import time
 from qiskit import QuantumCircuit
 from qiskit.circuit.library import QFT
 from qiskit.quantum_info import Statevector
+
+#
+# Alexandre Dufresne-Nappert
+# 20948586
+# Implementation of the Quantum JPEG Processor Class, implemented to be easy to use
+# Load the Image through Initialization (QJPEG("path/to/image"))
+# Save the file .saveJPEG("output.jpg", quality, True/False)
+#
 
 class QJPEG:
 
@@ -36,6 +45,8 @@ class QJPEG:
     
     rawImage : np.ndarray
 
+    timestampStart: float
+
     def __init__(self, imagePath: str):
         
         self.DC_MAP : dict = self.buildJPEGStandardHuffmanMap(self.STD_DC_COUNTS, self.STD_DC_SYMS)
@@ -43,12 +54,18 @@ class QJPEG:
         
         # Load Image From Path
         img = cv2.imread(imagePath)
-        imgYCbCr = cv2.cvtColor(img, cv2.COLOR_BGR2YCrCb)[:, :, [0, 2, 1]]
-        self.rawImage = imgYCbCr.astype(np.float32) - 128
+        imgYCbCr = cv2.cvtColor(img, cv2.COLOR_BGR2YCrCb).astype(np.float32) - 128
         
-        self.imageHeight = self.rawImage.shape[0]
-        self.imageWidth = self.rawImage.shape[1]
-    
+        self.imageHeight = imgYCbCr.shape[0]
+        self.imageWidth = imgYCbCr.shape[1]
+        
+        self.Y = imgYCbCr[:, :, 0]
+        
+        halfW = int(np.ceil(self.imageWidth / 2))
+        halfH = int(np.ceil(self.imageHeight / 2))
+        self.Cr = cv2.resize(imgYCbCr[:, :, 1], (halfW, halfH), interpolation=cv2.INTER_AREA)
+        self.Cb = cv2.resize(imgYCbCr[:, :, 2], (halfW, halfH), interpolation=cv2.INTER_AREA)
+        
     # ==========================================
     # UTILITY FUNCTIONS
     # ==========================================
@@ -230,7 +247,7 @@ class QJPEG:
         
         # Compute the QDCT Result in parallel across all channels
         finalState = state.evolve(qc)
-            
+        
         # Decode data and reshape it to 8x8 blocks
         reshaped = (np.real(finalState.data) * norm).reshape(-1, 16, 16)
             
@@ -374,43 +391,74 @@ class QJPEG:
                 allEntries.append(("AC", (run << 4) | category, extra))
                 run = 0
     
-    def encodeImageToSymbols(self, allQuantizedChannels:np.ndarray):
-        """Encodes the Color Channels and Quantized Frequency Blocks into a Run Length Encoding Formatted List
-        
+    def encodeImageToSymbols(self, quantY: np.ndarray, quantCb: np.ndarray, quantCr: np.ndarray):
+        """Encodes the separated Color Channels and Quantized Frequency Blocks into a Run Length Encoding Formatted List.
+    
         Args :
-            allQuantizedChannels (numpy.ndarray) - Array of the Color Channels and Quantized Frequency Blocks
+            quantY (numpy.ndarray) - Array of Quantized Frequency Blocks for the Luminance (Y) channel.
+            quantCb (numpy.ndarray) - Array of Quantized Frequency Blocks for the Chroma Blue (Cb) channel.
+            quantCr (numpy.ndarray) - Array of Quantized Frequency Blocks for the Chroma Red (Cr) channel.
             
         Returns :
-            (list[(str, bin, bin)]) - List of Values Encoded using Run Length Encoding ("DC/AC", Binary of nearest Power Of 2, Binary of extra bits) 
+            (list[(str, bin, bin)]) - List of Values Encoded using Run Length Encoding ("DC/AC", Binary of nearest Power Of 2, Binary of extra bits).
         """
         
         allEntries = []
-        numBlocks = allQuantizedChannels.shape[1]
         previousDC = [0, 0, 0]
-
-        for b in range(numBlocks):
-            for c in range(3):
-                block = allQuantizedChannels[c, b]
-                zigZag = self.zigZagEncoding(block)
-                
-                # Perform DC Encoding
-                difference = int(zigZag[0] - previousDC[c])
-                category, extra = self.getCategoricalBits(difference, isDC=True)
-                allEntries.append(("DC", category, extra))
-                previousDC[c] = zigZag[0]
         
-                # Find Last Data Index 
-                lastNonZeroIndex = 63
-                while lastNonZeroIndex > 0 and zigZag[lastNonZeroIndex] == 0:
-                    lastNonZeroIndex -= 1   
-                    
-                # AC Encoding (Run length encoding on zeros until last non-zero)
-                self.encodeACRunLength(zigZag, allEntries, lastNonZeroIndex)
+        hMCUS = int(np.ceil(self.imageHeight / 16))
+        wMCUS = int(np.ceil(self.imageWidth / 16))
+        
+        _, padWY = self.getPaddedDimensions(self.Y)
+        _, padWC = self.getPaddedDimensions(self.Cb)
+        blocksPerRowY = padWY // 8
+        blocksPerRowC = padWC // 8
+        
+        for mY in range(hMCUS):
+            for mX in range(wMCUS):
+                # Process Luminance (Y) - 4 Blocks per MCU
+                for rOff in [0, 1]:
+                    for cOff in [0, 1]:
+                        yID = (mY * 2 + rOff) * blocksPerRowY + (mX * 2 + cOff)
+                        if yID < len(quantY):
+                            self.encodeSingleBlock(quantY[yID], 0, previousDC, allEntries)
                 
-                if lastNonZeroIndex < 63:
-                    allEntries.append(("AC", 0x00, ""))
+                # Process Chroma Blue (Cb) - 1 Block per MCU
+                cID = mY * blocksPerRowC + mX
+                if cID < len(quantCb):
+                    self.encodeSingleBlock(quantCb[cID], 1, previousDC, allEntries)
+                    
+                # Process Chroma Red (Cr) - 1 Block per MCU
+                if cID < len(quantCr):
+                    self.encodeSingleBlock(quantCr[cID], 2, previousDC, allEntries)
                     
         return allEntries
+
+    def encodeSingleBlock(self, block: np.ndarray, channel: int, previousDC: list, allEntries: list):
+        """Encodes a single 8x8 Quantized Frequency Block and appends the results directly to the master entries list.
+    
+        Args :
+            block (numpy.ndarray) - A single 8x8 Quantized Frequency Block to be encoded.
+            channel (int) - The ID of the color channel being processed (0 for Y, 1 for Cb, 2 for Cr).
+            previousDC (list) - A list containing the previous DC values for all three color channels.
+            allEntries (list) - The master list where the Run Length Encoded tuples are appended.
+        """
+        zigZag = self.zigZagEncoding(block)
+        
+        # DC Difference
+        difference = int(zigZag[0] - previousDC[channel])
+        category, extra = self.getCategoricalBits(difference, isDC=True)
+        allEntries.append(("DC", category, extra))
+        previousDC[channel] = zigZag[0]
+
+        # Find Last Non-Zero AC Value
+        lastNonZeroIndex = 63
+        while lastNonZeroIndex > 0 and zigZag[lastNonZeroIndex] == 0:
+            lastNonZeroIndex -= 1   
+            
+        self.encodeACRunLength(zigZag, allEntries, lastNonZeroIndex)
+        if lastNonZeroIndex < 63:
+            allEntries.append(("AC", 0x00, ""))
     
     def getJPEGSignature(self) -> bytes:
         """Gets the Standardized JPEG File Header Bytes
@@ -496,7 +544,7 @@ class QJPEG:
         
         SOF0 = b'\xff\xc0'
         
-        Y_QUANTIZATION_SUBSAMPLING = b'\x01\x11\x00'
+        Y_QUANTIZATION_SUBSAMPLING = b'\x01\x22\x00'
         CB_QUANTIZATION_SUBSAMPLING = b'\x02\x11\x00'
         CR_LUMINANCE_QUANTIZATION = b'\x03\x11\x00'
         
@@ -608,18 +656,13 @@ class QJPEG:
         Returns :
             (bytes) - String of Encoded Bytes representing the JPEG Image
         """
-        print("Applying Quantum Discrete Cosine Transform...")
         
-        # Perform DCT and Quantization
-        imageDCT = self.DCTImage(self.rawImage, memoryEfficient)
+        # Process the each colour channel seperately since they are difference sizes
+        blocksY = self.quantizeImage(self.processParallelQDCT(self.Y), scaledQuantizationMatrix)
+        blocksCb = self.quantizeImage(self.processParallelQDCT(self.Cb), scaledQuantizationMatrix)
+        blocksCr = self.quantizeImage(self.processParallelQDCT(self.Cr), scaledQuantizationMatrix)
         
-        print("Completed QDCT!")
-        
-        print("Quantizing image and Encoding...")
-        
-        # Perform Image Quantization and Runlength Encoding
-        quantizedImage = self.quantizeImage(imageDCT, scaledQuantizationMatrix)
-        entries = self.encodeImageToSymbols(quantizedImage)
+        entries = self.encodeImageToSymbols(blocksY, blocksCb, blocksCr)
         
         # Huffman Encoding Using Precomputed Tables
         byteString = "".join([(self.DC_MAP[e[1]] if e[0] == 'DC' else self.AC_MAP[e[1]]) + e[2] for e in entries])
@@ -652,21 +695,21 @@ class QJPEG:
             memoryEfficient (bool) - Toggle to process channels sequentially (True) or simultaneously (False)
         """
         
-        # Check if Image has been loaded?
-        
         scaledQuantizationMatrix = self.scaleQuantizationMatrix(self.QLUMINANCE, quality)
         
         print("Saving Image as JPEG...")
         
+        self.timestampStart = time.time()
+        
         with open(fileName, 'wb') as f:
-            f.write(self.getJPEGSignature())                                    # SOI (Start of Image (Header))
-            f.write(self.getJPEGVersionInfo())                                  # APP0 (JPEG Version Info)
-            f.write(self.getJPEGQuantizationMatrix(scaledQuantizationMatrix))   # DQT (Quantization Matrix Encoding)
-            f.write(self.getJPEGColorFormatSpecification())                     # SOF0 (Color Format Specification)
-            f.write(self.getJPEGHuffmanTableDC())                               # DHTDC (DC Huffman Table Encoding)
-            f.write(self.getJPEGHuffmanTableAC())                               # DHTAC (AC Huffman Table Encoding)
-            f.write(self.getJPEGStartOfScan())                                  # SOS (Start of Scan of Image Compression)
-            f.write(self.getJPEGByteScan(scaledQuantizationMatrix, memoryEfficient))             # Raw Compressed Bits of Image
-            f.write(self.getJPEGFooter())                                       # EOI (End of Image (Footer))
+            f.write(self.getJPEGSignature())                                        # SOI (Start of Image (Header))
+            f.write(self.getJPEGVersionInfo())                                      # APP0 (JPEG Version Info)
+            f.write(self.getJPEGQuantizationMatrix(scaledQuantizationMatrix))       # DQT (Quantization Matrix Encoding)
+            f.write(self.getJPEGColorFormatSpecification())                         # SOF0 (Color Format Specification)
+            f.write(self.getJPEGHuffmanTableDC())                                   # DHTDC (DC Huffman Table Encoding)
+            f.write(self.getJPEGHuffmanTableAC())                                   # DHTAC (AC Huffman Table Encoding)
+            f.write(self.getJPEGStartOfScan())                                      # SOS (Start of Scan of Image Compression)
+            f.write(self.getJPEGByteScan(scaledQuantizationMatrix, memoryEfficient))# Raw Compressed Bits of Image
+            f.write(self.getJPEGFooter())                                           # EOI (End of Image (Footer))
         
         print("Image Saved!")
