@@ -7,100 +7,57 @@ import csv
 #
 # Ty Davis
 # 20939918
-# Measures the raw compute time of the Image Compressions and the Size of the Compressed images at different qualities
-#
+# Measures the raw compute time of the either implementationas of image compressions, scrape the original size,
+# the new sizes as well as the quality chosen for the compressed images.
 
-# 1. Ensure the output directory exists so the script doesn't crash
+# Directory 
 os.makedirs("CompressionResults", exist_ok=True)
 
-images = [
-    #"Test-Images/Blue Marble.tif", # It is suggested to comment this line out during testing
-    #"Test-Images/DNA.jpg",
-    "Test-Images/Episode3.PNG",
-    #"Test-Images/ESA.bmp",
-    #"Test-Images/ETA.bmp",
-    #"Test-Images/Friday.PNG",
-    #"Test-Images/FridayBoat.JPG",
-    #"Test-Images/JOJO.PNG",
-    #"Test-Images/JOJOW3.PNG",
-    #"Test-Images/Onion.PNG",
-    #"Test-Images/Starwars.jpg",
-    #"Test-Images/starwarsoriginal.PNG",
-    #"Test-Images/StarwarsRise.JPG",
-    #"Test-Images/Tanks.png",
-    #"Test-Images/WildFriday.PNG",
-]
+# Make a list of the test images
+images = [#"Test-Images/Blue Marble.tif", leave this commented or suffer computer death
+    "Test-Images/DNA.jpg", "Test-Images/Episode3.PNG", "Test-Images/ESA.bmp", "Test-Images/ETA.bmp",
+    "Test-Images/Friday.PNG", "Test-Images/FridayBoat.JPG", "Test-Images/JOJO.PNG", "Test-Images/JOJOW3.PNG",
+    "Test-Images/Onion.PNG", "Test-Images/Starwars.jpg", "Test-Images/starwarsoriginal.PNG", "Test-Images/StarwarsRise.JPG",
+    "Test-Images/Tanks.png","Test-Images/WildFriday.PNG"]
 
-# 2. Setup the CSV file to record data for Excel
-csv_filename = "compression_benchmark_results.csv"
-
-with open(csv_filename, mode="w", newline="") as file:
+# Setup CSV export file
+CSV = "compression_benchmark_results.csv"
+with open(CSV, mode="w", newline="") as file:
     writer = csv.writer(file)
-    # Write the header row
-    writer.writerow(
-        [
-            "Photo Name",
-            "Quality Parameter",
-            "Original Size (KB)",
-            "QJPEG Size (KB)",
-            "CV2 Size (KB)",
-            "Time QFT (s)",
-            "Time DCT (s)",
-        ]
-    )
-
-    for img_path in images:
-        # Check if the image exists to avoid crashing mid-benchmark
-        if not os.path.exists(img_path):
-            print(f"Warning: File not found: {img_path}. Skipping.")
+    writer.writerow(["Photo Name","Quality Parameter","Original Size (KB)","QJPEG Size (KB)","CV2 Size (KB)","Time QFT (s)","Time DCT (s)"])
+    for Ipath in images:
+        # Check if the image exists to avoid me crashing when i forget images
+        if not os.path.exists(Ipath):
+            print(f"File not found:{Ipath}.Skip.")
             continue
-
-        # Extract just the filename (e.g., 'DNA') for cleaner logging
-        base_name = os.path.basename(img_path).split(".")[0]
-
-        # Get original file size in Kilobytes (KB)
-        orig_size_kb = os.path.getsize(img_path) / 1024.0
-
-        # --- QJPEG (QFT) Compression ---
-        image_q = QJPEG(img_path)
-
-        for q in range(0, 105, 5):
-
-            # Changed to .jpg extension to avoid format conflicts
-            qjpeg_path = f"CompressionResults/{base_name}_q{q}_QJPEG.jpg"
-
-            start_q = time.time()
-            image_q.saveJPEG(qjpeg_path, q, "Blue Marble" in base_name)
-            time_qft = time.time() - start_q
-
-            # Get QJPEG compressed size
-            qjpeg_size_kb = os.path.getsize(qjpeg_path) / 1024.0
-
-            # --- OpenCV (DCT) Compression ---
-            cv2_path = f"CompressionResults/{base_name}_q{q}_CV2.jpg"
-
-            start_cv = time.time()
-            # FIX: Properly applying the quality parameter 'q' to OpenCV
-            cv2.imwrite(cv2_path, cv2.imread(img_path), [int(cv2.IMWRITE_JPEG_QUALITY), q])
-            time_dct = time.time() - start_cv
-
-            # Get OpenCV compressed size
-            cv2_size_kb = os.path.getsize(cv2_path) / 1024.0
-
-            # --- Log the Data ---
-            writer.writerow(
-                [
-                    base_name,
-                    q,
-                    f"{orig_size_kb:.2f}",
-                    f"{qjpeg_size_kb:.2f}",
-                    f"{cv2_size_kb:.2f}",
-                    f"{time_qft:.4f}",
-                    f"{time_dct:.4f}",
-                ]
-            )
-
-            # Print to console so you know it isn't frozen
-            print(f"Processed: {base_name} | Quality: {q}")
-
-print(f"\nBenchmarking complete! Open '{csv_filename}' in Excel to view your data.")
+        # Extract filename without wrap, original size, call QJPEG parameter
+        name = os.path.basename(Ipath).split(".")[0]
+        OrigSize = os.path.getsize(Ipath) / 1024.0
+        Qimage = QJPEG(Ipath)
+        # Iterate for each all quality
+        for Qual in range(0, 105, 5):
+            # ============================= Quantum section ===========================================
+            # Each is to be processed as a jpg
+            Qpath = f"CompressionResults/{name}_q{Qual}_QJPEG.jpg"
+            # Time computation of QJPEG
+            Qstart = time.time()
+            Qimage.saveJPEG(Qpath, Qual,"Blue Marble"in name)
+            QTime = time.time()-Qstart
+            # Scrape size (KB)
+            QSize = os.path.getsize(Qpath)/1024.0
+            # ============================= Classic section ===========================================
+            # Each is to be processed as a jpg (again)
+            Cpath = f"CompressionResults/{name}_q{Qual}_CV2.jpg"
+            # Time computation of JPEG using OpenCV library
+            Cstart = time.time()
+            cv2.imwrite(Cpath,cv2.imread(Ipath),[int(cv2.IMWRITE_JPEG_QUALITY), Qual]) # Make quality a OpenCV parameter
+            CTime = time.time()-Cstart
+            # Size (KB)
+            CSize = os.path.getsize(Cpath)/1024.0
+            # =========================================================================================
+            # Write data to csv
+            writer.writerow([name,Qual,f"{OrigSize:.2f}",f"{QSize:.2f}",f"{CSize:.2f}",f"{QTime:.4f}",f"{CTime:.4f}",])
+            # Print to check if your system crashed (Blue Marble Exclusive (Aleex's Baby))
+            print(f"Processed:{name}|Quality:{Qual}")
+# Print again but because Alex likes it           
+print(f"\nBenchmarking complete! Open '{CSV}' in Excel to view your data.")
