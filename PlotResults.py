@@ -16,10 +16,10 @@ df_runs = pd.read_csv('Results/CompressionBenchmarkResultsInneficientBest.csv')
 df_runs = df_runs.loc[:, ~df_runs.columns.str.contains('^Unnamed')]
 
 # 2. Process Data
-# Group by Photo Name and Quality Parameter to ensure data is clean and averaged
+# Group by photo name and quality parameter to ensure data is clean and averaged
 df_agg = df_runs.groupby(['Photo Name', 'Quality Parameter']).mean(numeric_only=True).reset_index()
 
-# Load the Time vs Blocks data (Note this is using old data when all Color channels were processed at the same time)
+# Load the Time vs Blocks data (Note: this is using old data when all color channels were processed at the same time)
 # Any new data produced by testDCTvsQDCT only measures the Luminance Channel
 df_time = pd.read_csv('Results/DCTvsQDCT.csv')
 df_time = df_time[df_time['Name'] != 'Blue Marble'] 
@@ -60,7 +60,7 @@ y_dct = df_time['DCT Time']
 
 ax3.plot(x_dct, y_dct, marker='o', linestyle='none', color='tab:blue', label='Standard DCT Time')
 
-# Calculate Trendline and R^2 for DCT
+# Calculate trendline and R^2 for DCT
 z_dct = np.polyfit(x_dct, y_dct, 1)
 p_dct = np.poly1d(z_dct)
 yhat_dct = p_dct(x_dct)                           # Predicted y values
@@ -79,7 +79,7 @@ y_qdct = df_time['QDCT Time']
 
 ax4.plot(x_qdct, y_qdct, marker='s', linestyle='none', color='tab:orange', label='QDCT Time')
 
-# Calculate Trendline and R^2 for QDCT
+# Calculatetrendline and R^2 for QDCT
 z_qdct = np.polyfit(x_qdct, y_qdct, 1)
 p_qdct = np.poly1d(z_qdct)
 yhat_qdct = p_qdct(x_qdct)
