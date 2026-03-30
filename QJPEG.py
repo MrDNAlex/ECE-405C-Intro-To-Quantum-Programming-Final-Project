@@ -147,7 +147,7 @@ class QJPEG:
             imageGray (numpy.ndarray) - A Gray Scale or Single Color Channel Matrix representing an Image
             
         Returns :
-            (int, int) - The padded dimensions the image should be so that the dimensions are multiples of 8
+            (int, int) - The padded dimensions the image should be so that they are multiples of 8
         """
         h, w = imageGray.shape[:2]
         return int(np.ceil(h / 8) * 8), int(np.ceil(w / 8) * 8)
