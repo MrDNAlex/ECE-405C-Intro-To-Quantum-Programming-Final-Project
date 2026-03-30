@@ -3,27 +3,32 @@ import time
 import os
 import cv2
 import csv
-import gc
+
+#
+# Ty Davis
+# 20939918
+# Measures the raw compute time of the Image Compressions and the Size of the Compressed images at different qualities
+#
 
 # 1. Ensure the output directory exists so the script doesn't crash
 os.makedirs("CompressionResults", exist_ok=True)
 
 images = [
-    "Test-Images/Blue Marble.tif",
-    "Test-Images/DNA.jpg",
+    #"Test-Images/Blue Marble.tif", # It is suggested to comment this line out during testing
+    #"Test-Images/DNA.jpg",
     "Test-Images/Episode3.PNG",
-    "Test-Images/ESA.bmp",
-    "Test-Images/ETA.bmp",
-    "Test-Images/Friday.PNG",
-    "Test-Images/FridayBoat.JPG",
-    "Test-Images/JOJO.PNG",
-    "Test-Images/JOJOW3.PNG",
-    "Test-Images/Onion.PNG",
-    "Test-Images/Starwars.jpg",
-    "Test-Images/starwarsoriginal.PNG",
-    "Test-Images/StarwarsRise.JPG",
-    "Test-Images/Tanks.png",
-    "Test-Images/WildFriday.PNG",
+    #"Test-Images/ESA.bmp",
+    #"Test-Images/ETA.bmp",
+    #"Test-Images/Friday.PNG",
+    #"Test-Images/FridayBoat.JPG",
+    #"Test-Images/JOJO.PNG",
+    #"Test-Images/JOJOW3.PNG",
+    #"Test-Images/Onion.PNG",
+    #"Test-Images/Starwars.jpg",
+    #"Test-Images/starwarsoriginal.PNG",
+    #"Test-Images/StarwarsRise.JPG",
+    #"Test-Images/Tanks.png",
+    #"Test-Images/WildFriday.PNG",
 ]
 
 # 2. Setup the CSV file to record data for Excel
@@ -59,7 +64,7 @@ with open(csv_filename, mode="w", newline="") as file:
         # --- QJPEG (QFT) Compression ---
         image_q = QJPEG(img_path)
 
-        for q in range(0, 100, 5):
+        for q in range(0, 105, 5):
 
             # Changed to .jpg extension to avoid format conflicts
             qjpeg_path = f"CompressionResults/{base_name}_q{q}_QJPEG.jpg"
@@ -76,7 +81,7 @@ with open(csv_filename, mode="w", newline="") as file:
 
             start_cv = time.time()
             # FIX: Properly applying the quality parameter 'q' to OpenCV
-            cv2.imwrite(cv2_path, image_q.rawImage, [int(cv2.IMWRITE_JPEG_QUALITY), q])
+            cv2.imwrite(cv2_path, cv2.imread(img_path), [int(cv2.IMWRITE_JPEG_QUALITY), q])
             time_dct = time.time() - start_cv
 
             # Get OpenCV compressed size

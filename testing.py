@@ -1,5 +1,4 @@
 import numpy as np
-import struct
 import matplotlib.pyplot as plt
 import cv2
 from qiskit import QuantumCircuit
@@ -7,7 +6,11 @@ from qiskit.circuit.library import QFT
 from qiskit.quantum_info import Statevector
 from quantizationMatrix import Q_LUMINANCE
 
-from QJPEG import QJPEG
+#
+# Alexandre Dufresne-Nappert
+# 20948586
+# Filler file to test out implementations of Raw functions before making the proper classs
+#
 
 def zigZagTravelIndices(matrix: np.ndarray):
 
@@ -196,36 +199,32 @@ cbar = plt.colorbar(scatter)
 cbar.set_label('Step Index in Zig-Zag', rotation=270, labelpad=15)
 
 # Display an image in the Graph
-DNAImage = cv2.imread("TestImages/DNA.jpg")
-DNAImageGray = cv2.imread("TestImages/DNA.jpg", cv2.IMREAD_GRAYSCALE)
-
-imgRGB = cv2.cvtColor(DNAImage, cv2.COLOR_BGR2RGB)
-
-h, w, c = np.shape(DNAImage)
-
-path = getRasterTravel(w, h, 8)
+DNAImage = cv2.imread("Test-Images/DNA.jpg", cv2.IMREAD_COLOR)
+DNAImage = cv2.cvtColor(DNAImage, cv2.COLOR_BGR2RGB)
+DNAImageGray = cv2.imread("Test-Images/DNA.jpg", cv2.IMREAD_GRAYSCALE)
 
 rows = [p[0] for p in path]
 cols = [p[1] for p in path]
 indices = np.arange(len(path))
         
 plt.figure(figsize=(16, 10))
-plt.imshow(imgRGB)
+plt.imshow(DNAImage)
 
 scatter = plt.scatter(cols, rows, c=indices, cmap='magma', s=10, edgecolors='black')
 cbar = plt.colorbar(scatter)
 cbar.set_label('Step Index in Zig-Zag', rotation=270, labelpad=15)
 
-print(getPixelValues(imgRGB, 0, 0))
+print(getPixelValues(DNAImage, 0, 0))
 print(getPixelValues(DNAImageGray, 0, 0))
 
-print(np.shape(getPixelValues(imgRGB, 0, 0)))
+print(np.shape(getPixelValues(DNAImage, 0, 0)))
 print(np.shape(getPixelValues(DNAImageGray, 0, 0)))
 
-print(isColoured(imgRGB))
+print(isColoured(DNAImage))
 print(isColoured(DNAImageGray))
 
 qdct_2d = create2DQCDTCircuit()
+qdct_2d = qdct_2d.decompose().decompose()
 qdct_2d.draw("mpl") # Visual check
 plt.show()
 
@@ -241,7 +240,6 @@ def padImage(imageGray: np.ndarray):
     h, w = imageGray.shape[:2]
     newH, newW = getPaddedDimensions(imageGray)
     return np.pad(imageGray, ((0, newH - h), (0, newW - w)), mode='constant')
-
 
 def blockifyImage(imageGray: np.ndarray):
     
@@ -432,7 +430,6 @@ quantizedResults = quantizeImage(customResult, Q_LUMINANCE)
 for i in range(10):
     print(quantizedResults[i])
 
-
 print("Custom")
 print(customResult)
 print(customResult.shape)
@@ -456,10 +453,5 @@ for i in range(10):
 for i in range(10):
     print(quantizedResults[2][i])
 
-
 print(quantizedResults[2][0])
 print(zigZagTravel(quantizedResults[2][0]))
-
-image = QJPEG("DNA.jpg")
-
-image.saveJPEG("teams-quantum.jpg", 95)
