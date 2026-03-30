@@ -27,6 +27,6 @@ pip install -r requirements.txt
 ```
 
 # Authors
-MrDNAlex (Alexandre Dufresne-Nappert) : mr.dnalex.2003@gmail.com / a3dufres@uwaterloo.ca
-Ty Davis
-Ryan Becze
+Alexandre Dufresne-Nappert (MrDNAlex) (20948586) : mr.dnalex.2003@gmail.com / a3dufres@uwaterloo.ca
+Ty Davis (20939918) : t8davis@uwaterloo.ca
+Ryan Becze (20958526) : rbecze@uwaterloo.ca
