@@ -7,21 +7,29 @@ from qiskit.quantum_info import Statevector
 import gc
 from QJPEG import QJPEG
 
+#
+# Alexandre Dufresne-Nappert
+# 20948586
+# Benchmarks the DCT vs QDCT computation time on different images
+# NOTE
+# this has been modified to use Downsampled data now and computes a single color channel
+# Previous implementation of the code did not use YCbCr and Downsampling, so the CSV present in the Results folder is semi outdated data
+#
 
 def GetAdditionalInfo(fileName):
     image = QJPEG(fileName)
-    colorChannels = image.rawImage[:, :, :]
+    colorChannels = image.Y
 
     h, w = colorChannels.shape[:2]
     newH, newW = image.getPaddedDimensions(colorChannels)
 
     paddedImage = np.pad(
-        colorChannels, ((0, newH - h), (0, newW - w), (0, 0)), mode="constant"
+        colorChannels, ((0, newH - h), (0, newW - w)), mode="constant"
     )
 
     blocks8x8 = np.vstack(
         [
-            paddedImage[:, :, i]
+            paddedImage[:, :]
             .reshape(newH // 8, 8, newW // 8, 8)
             .transpose(0, 2, 1, 3)
             .reshape(-1, 8, 8)
@@ -33,24 +41,21 @@ def GetAdditionalInfo(fileName):
 
     return (h, w, newH, newW, numBlocks)
 
-
 def RunClassical(fileName):
 
-    image = QJPEG(fileName)
-    # ==========================================
     # CLASSICAL PREPARATION
-    # ==========================================
-    h, w = image.rawImage.shape[:2]
+    image = QJPEG(fileName)
+    h, w = image.Y.shape
 
-    newH, newW = image.getPaddedDimensions(image.rawImage)
+    newH, newW = image.getPaddedDimensions(image.Y)
 
     paddedImage = np.pad(
-        image.rawImage, ((0, newH - h), (0, newW - w), (0, 0)), mode="constant"
+        image.Y, ((0, newH - h), (0, newW - w)), mode="constant"
     )
 
     blocks8x8 = np.vstack(
         [
-            paddedImage[:, :, i]
+            paddedImage[:, :]
             .reshape(newH // 8, 8, newW // 8, 8)
             .transpose(0, 2, 1, 3)
             .reshape(-1, 8, 8)
@@ -60,9 +65,7 @@ def RunClassical(fileName):
 
     numBlocks = blocks8x8.shape[0]
 
-    # ==========================================
     # CLASSICAL BENCHMARK (MATH ONLY)
-    # ==========================================
     blocks8x8 = blocks8x8.astype(np.float32)
 
     start_classical = time.perf_counter()
@@ -79,16 +82,13 @@ def RunClassical(fileName):
 
     return dctTime
 
-
 def RunQuantum(fileName):
 
     image = QJPEG(fileName)
 
-    # ==========================================
     # QUANTUM PREPARATION
-    # ==========================================
     print("Preparing DCT Blocks...")
-    flattenedBlocks, blocks = image.prepareDCTBlocks(image.rawImage)
+    flattenedBlocks, blocks = image.prepareDCTBlocks(image.Y)
     numQubits = int(np.log2(len(flattenedBlocks)))
     print("DCT Blocks Fomatted!")
 
@@ -118,9 +118,7 @@ def RunQuantum(fileName):
     clean = gc.collect()
     print(f"Cleaned Items : {clean}")
 
-    # ==========================================
     # QUANTUM BENCHMARK (MATH ONLY)
-    # ==========================================
     print("Running Quantum Circuit...")
     startQDCT = time.perf_counter()
 
@@ -140,7 +138,6 @@ def RunQuantum(fileName):
 
     return qdctTime
 
-
 def RunBenchmark(fileName: str):
     name = fileName.split("/")[-1].split(".")[0]
 
@@ -150,7 +147,6 @@ def RunBenchmark(fileName: str):
     h, w, newH, newW, numBlocks = GetAdditionalInfo(fileName)
 
     return [name, dctTime, qdctTime, h, w, newH, newW, numBlocks]
-
 
 if __name__ == "__main__":
 
@@ -168,7 +164,7 @@ if __name__ == "__main__":
     )
 
     images = [
-        "Test-Images/Blue Marble.tif",
+        #"Test-Images/Blue Marble.tif", # It is suggested to comment this line out during testing
         "Test-Images/DNA.jpg",
         "Test-Images/Episode3.PNG",
         "Test-Images/ESA.bmp",
