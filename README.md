@@ -26,6 +26,18 @@ source venv/Scripts/Activate
 pip install -r requirements.txt
 ```
 
+# Using the Program
+```python
+# Load the Image
+image = QJPEG("path/to/image.png")
+
+# Save the Image
+fileName = "output.jpg"
+quality = 80
+memoryEfficient = False
+image.saveJPEG(fileName, quality, memoryEfficient)
+```
+
 # Authors
 Alexandre Dufresne-Nappert (MrDNAlex) (20948586) : mr.dnalex.2003@gmail.com / a3dufres@uwaterloo.ca
 Ty Davis (20939918) : t8davis@uwaterloo.ca
